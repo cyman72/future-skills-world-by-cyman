@@ -1,7 +1,7 @@
 {
-  "name": "futureskills-world-mvp1-fullstack",
+  "name": "futureskills-world-mvp2-code-upgrade",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

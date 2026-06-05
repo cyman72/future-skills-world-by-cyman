@@ -2,14 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { isSupabaseConfigured, supabase } from "./lib/supabaseClient";
 import { DEFAULT_PROGRESS, LEADERBOARD } from "./data/seed";
 import { getInitialGameState, saveMission, saveProgress } from "./services/gameService";
+import { logEvent } from "./services/analyticsService";
 import AuthGate from "./components/AuthGate";
 import Layout from "./components/Layout";
+import Onboarding from "./components/Onboarding";
 import WorldView from "./components/WorldView";
 import MissionsView from "./components/MissionsView";
 import LeaderboardView from "./components/LeaderboardView";
 import ProfileView from "./components/ProfileView";
 import AdminDashboard from "./components/AdminDashboard";
 
+const onboardingKey = "futureskills-world-onboarding-completed";
 const localUser = (displayName = "Future Architect") => ({ id: "local-demo-user", email: "demo@local", user_metadata: { display_name: displayName } });
 const sumPoints = (points) => Object.values(points || {}).reduce((s, v) => s + Number(v || 0), 0);
 const getLevel = (knowledge) => Math.max(1, Math.min(10, Math.floor(Number(knowledge || 0) / 70) + 1));
@@ -25,6 +28,10 @@ export default function App() {
   const [answers, setAnswers] = useState({});
   const [view, setView] = useState("world");
   const [error, setError] = useState("");
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try { return localStorage.getItem(onboardingKey) !== "true"; }
+    catch { return true; }
+  });
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -50,6 +57,7 @@ export default function App() {
         setDistricts(data.districts);
         setMissions(data.missions);
         setProgress(data.progress);
+        logEvent(user, "app_opened", { mode: isSupabaseConfigured ? "supabase" : "local" });
       } catch (err) {
         setError(err.message || "Could not load game data.");
       } finally {
@@ -88,6 +96,19 @@ export default function App() {
     setUser(localUser(displayName));
   }
 
+  async function completeOnboarding(preferredDistrictId) {
+    try { localStorage.setItem(onboardingKey, "true"); } catch {}
+    setShowOnboarding(false);
+    await logEvent(user, "onboarding_completed", { preferredDistrictId });
+    if (preferredDistrictId) selectDistrict(preferredDistrictId);
+  }
+
+  function restartOnboarding() {
+    try { localStorage.removeItem(onboardingKey); } catch {}
+    setShowOnboarding(true);
+    logEvent(user, "onboarding_started", { source: "profile" });
+  }
+
   function selectDistrict(districtId) {
     const first = missions.find((m) => m.district_id === districtId && !completedSet.has(m.id)) || missions.find((m) => m.district_id === districtId);
     persist({ ...progress, active_district_id: districtId, selected_mission_id: first?.id || progress.selected_mission_id });
@@ -98,19 +119,23 @@ export default function App() {
     const mission = missions.find((m) => m.id === missionId);
     persist({ ...progress, active_district_id: mission?.district_id || progress.active_district_id, selected_mission_id: missionId });
     setView("missions");
+    logEvent(user, "mission_started", { missionId, districtId: mission?.district_id });
   }
 
   function answerMission(missionId, index) {
     setAnswers((a) => ({ ...a, [missionId]: index }));
+    const mission = missions.find((m) => m.id === missionId);
+    logEvent(user, "mission_answered", { missionId, answerIndex: index, correct: mission?.correct_index === index });
   }
 
   async function completeMission(mission) {
     if (!mission || completedSet.has(mission.id)) return;
     const r = mission.rewards || {};
+    const alreadyHadBadge = progress.badges?.includes(mission.badge);
     const next = {
       ...progress,
       completed_missions: [...(progress.completed_missions || []), mission.id],
-      badges: progress.badges?.includes(mission.badge) ? progress.badges : [mission.badge, ...(progress.badges || [])],
+      badges: alreadyHadBadge ? progress.badges : [mission.badge, ...(progress.badges || [])],
       points: {
         knowledge: Number(progress.points?.knowledge || 0) + Number(r.knowledge || 0),
         capital: Number(progress.points?.capital || 0) + Number(r.capital || 0),
@@ -122,6 +147,8 @@ export default function App() {
       }
     };
     await persist(next);
+    await logEvent(user, "mission_completed", { missionId: mission.id, districtId: mission.district_id, badge: mission.badge, rewards: r });
+    if (!alreadyHadBadge) await logEvent(user, "badge_earned", { badge: mission.badge, missionId: mission.id });
     setView("world");
   }
 
@@ -133,21 +160,37 @@ export default function App() {
         ? current.map((m) => (m.id === saved.id ? saved : m))
         : [...current, saved].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
       );
+      await logEvent(user, "admin_mission_saved", { missionId: saved.id, districtId: saved.district_id, published: saved.is_published });
+      return saved;
     } catch (err) {
       setError(err.message || "Could not save mission.");
     }
   }
 
+  async function handleDuplicateMission(sourceMission) {
+    const duplicate = {
+      ...sourceMission,
+      id: `${sourceMission.id}-copy-${Date.now()}`,
+      title: `${sourceMission.title} copy`,
+      is_published: false,
+      sort_order: Number(sourceMission.sort_order || 999) + 1,
+    };
+    const saved = await handleSaveMission(duplicate);
+    await logEvent(user, "admin_mission_duplicated", { sourceMissionId: sourceMission.id, newMissionId: duplicate.id });
+    return saved || duplicate;
+  }
+
   if (authLoading) return <div className="center-screen">Loading authentication…</div>;
   if (!user) return <AuthGate onLocalDemo={enterLocalDemo} />;
   if (gameLoading || !activeDistrict || !selectedMission) return <div className="center-screen">Loading FutureSkills World…</div>;
+  if (showOnboarding) return <Onboarding districts={districts} onComplete={completeOnboarding} onSkip={() => completeOnboarding()} />;
 
   const screens = {
     world: <WorldView districts={districts} missions={missions} progress={progress} completedSet={completedSet} onSelectDistrict={selectDistrict} onSelectMission={selectMission} />,
     missions: <MissionsView districts={districts} missions={missions} activeDistrict={activeDistrict} selectedMission={selectedMission} answers={answers} completedSet={completedSet} onSelectDistrict={selectDistrict} onSelectMission={selectMission} onAnswer={answerMission} onComplete={completeMission} />,
     leaderboard: <LeaderboardView leaderboard={LEADERBOARD} playerScore={score} playerLevel={level} playerBadge={progress.badges?.[0] || "New Architect"} />,
-    profile: <ProfileView user={user} profile={profile} progress={progress} level={level} />,
-    admin: isAdmin ? <AdminDashboard districts={districts} missions={missions} onSaveMission={handleSaveMission} /> : null
+    profile: <ProfileView user={user} profile={profile} progress={progress} level={level} onRestartOnboarding={restartOnboarding} />,
+    admin: isAdmin ? <AdminDashboard districts={districts} missions={missions} onSaveMission={handleSaveMission} onDuplicateMission={handleDuplicateMission} /> : null
   };
 
   return (

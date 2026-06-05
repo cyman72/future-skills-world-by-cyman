@@ -1,88 +1,45 @@
-# FutureSkills World — MVP 1 Full-Stack Starter
+# FutureSkills World — MVP 2 Code Upgrade
 
-**FutureSkills World is a gamified learning app where players build their own future society by mastering financial literacy, cybersecurity, AI, quantum computing and sustainability. It turns future skills into daily missions, social challenges and long-term progress — making learning continuous, practical and motivating.**
+FutureSkills World is a gamified learning app where players build their own future society by mastering financial literacy, cybersecurity, AI, quantum computing and sustainability.
 
-This is the next development step after the static HTML MVP.
+This MVP 2 code upgrade includes:
 
-## Included
+- onboarding flow for first-time users
+- analytics event tracking into Supabase
+- improved admin dashboard
+- mission filters and search
+- duplicate mission function
+- mission preview mode
+- weekly challenge section
+- better badge and progress display
 
-- Vite + React app
-- Cleaner project structure with separate files
-- Supabase authentication
-- Supabase database persistence
-- Local demo mode when Supabase is not configured
-- Player progress persistence
-- Admin dashboard for content management
-- Five learning districts:
-  - Finance
-  - Cybersecurity
-  - AI
-  - Quantum
-  - Sustainability
+## Deploy on Render
 
-## Run locally in demo mode
-
-```bash
-npm install
-npm run dev
-```
-
-This works even without Supabase. Progress and admin content are saved in localStorage.
-
-## Connect Supabase
-
-1. Create a Supabase project.
-2. Open the Supabase SQL editor.
-3. Run `supabase/schema.sql`.
-4. Copy `.env.example` to `.env.local`.
-5. Add your Supabase project URL and anon key.
-6. Restart the dev server.
-
-```bash
-npm run dev
-```
-
-7. Register a user in the app.
-8. Make the user an admin:
-
-```sql
-update public.profiles
-set role = 'admin'
-where email = 'your-email@example.com';
-```
-
-## Structure
+Use Static Site:
 
 ```text
-src/
-  components/
-    AdminDashboard.jsx
-    AuthGate.jsx
-    Layout.jsx
-    LeaderboardView.jsx
-    MissionsView.jsx
-    ProfileView.jsx
-    WorldView.jsx
-  data/
-    seed.js
-  lib/
-    supabaseClient.js
-  services/
-    gameService.js
-  App.jsx
-  main.jsx
-  styles.css
-supabase/
-  schema.sql
-docs/
-  architecture.md
+Build Command: npm install && npm run build
+Publish Directory: dist
+Root Directory: empty, unless package.json is inside a subfolder
 ```
 
-## Suggested next product steps
+Set the same environment variables in Render:
 
-1. Add React Router.
-2. Add institutional spaces for schools, banks, associations and companies.
-3. Add real multiplayer duels.
-4. Add analytics and learning outcome tracking.
-5. Add content review workflow.
-6. Add AI tutor connected only to approved content.
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+## Supabase analytics
+
+Run this file in Supabase SQL Editor if not already done:
+
+```text
+supabase/mvp2_analytics_foundation.sql
+```
+
+## Important
+
+Do not upload `.env.local` to GitHub.
+
+Onboarding completion is stored in the browser for MVP 2 to keep the upgrade compatible with your existing database schema.
